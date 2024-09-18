@@ -1,59 +1,67 @@
 import arcpy
 import os
 
-# Define paths to your geodatabases
-path1 = r"C:\GIS\Project1\Project1.gdb"
-path2 = r"C:\GIS\Project2\Project2.gdb"
-output_path = r"C:\GIS\Output\FinalProject.gdb"
+# Set the path to the folder containing your .lyrx files (symbology files)
+lyrx_folder = r"C:\Users\samir\OneDrive\Masaüstü\New folder (2)\Layers"
 
-# Create output geodatabase if it doesn’t exist
-if not arcpy.Exists(output_path):
-    arcpy.CreateFileGDB_management(os.path.dirname(output_path), os.path.basename(output_path))
+# Get the current ArcGIS Pro project
+project = arcpy.mp.ArcGISProject("CURRENT")
 
-# Set the workspace to the first geodatabase and get a list of feature classes
-arcpy.env.workspace = path1
-feature_classes1 = arcpy.ListFeatureClasses()
+# Get the active map
+active_map = project.activeMap
 
-# Set the workspace to the second geodatabase and get a list of feature classes
-arcpy.env.workspace = path2
-feature_classes2 = arcpy.ListFeatureClasses()
+# Create a dictionary to map the .lyrx layer names to the actual map layer names
+layer_name_mapping = {
+    "AshaghiTezyiqMovcudPE": "Aşağı təzyiqli mövcud polietilen qaz xətti",
+    "AshaghiTezyiqMovcudYeralti": "Aşağı təzyiqli mövcud yeraltı qaz xətti",
+    "AshaghiTezyiqMovcudYerustu": "Aşağı təzyiqli mövcud yerüstü qaz xətti",
+    "OrtaTezyiqMovcudYeralti": "Orta təzyiqli mövcud yeraltı qaz xətti",
+    "Orta təzyiqli mövcud yeraltı qaz xətti": "Orta təzyiqli mövcud yeraltı qaz xətti",
+    "Layihələndirilən aşağı təzyiqli yerüstü qaz xətti": "Layihələndirilən aşağı təzyiqli yerüstü qaz xətti",
+    "Orta təzyiq layihələndirilən yeraltı qaz xətti": "Orta təzyiq layihələndirilən yeraltı qaz xətti",
+    "Orta təzyiqli layihələndirilən yer üstü qaz xətti": "Orta təzyiqli layihələndirilən yer üstü qaz xətti",
+    "OrtaTezyiqMovcudPE": "Orta təzyiqli mövcud polietilen qaz xətti",
+    "OrtaTezyiqMovcudYerustu": "Orta təzyiqli mövcud yerüstü qaz xətti",
+    "QazTenzimleyiciMenteqe": "Qaz tənzimləyici məntəqə",
+    "Quraşdırılmış balans sayğacı": "Quraşdırılmış balans sayğacı",
+    "Regulator": "Requlyator",
+    "Saygac": "Sayğac",
+    "YeraltiBaglayiciKlapan": "Yeraltı bağlayıcı klapan",
+    "YerustuBaglayiciKlapan": "Yerüstü bağlayıcı klapan",
+    "YuksekTezyiqMovcudPE": "Yüksək təzyiqli mövcud polietilen qaz xətti",
+    "YuksekTezyiqMovcudYeralti": "Yüksək təzyiqli mövcud yeraltı qaz xətti",
+    "YuksekTezyiqMovcudYerustu": "Yüksək təzyiqli mövcud yeraltı qaz xətti",
+    "Əlaqələndirici siyirtmə": "Əlaqələndirici siyirtmə"
+}
 
-# Function to copy unique feature classes to the output geodatabase
-def copy_unique_features(fc_list, src_workspace, dest_workspace):
-    arcpy.env.workspace = src_workspace
-    for fc in fc_list:
-        dest_fc_path = os.path.join(dest_workspace, fc)
-        if not arcpy.Exists(dest_fc_path):
-            try:
-                arcpy.Copy_management(fc, dest_fc_path)
-                print(f"Copied {fc} to {dest_workspace}")
-            except Exception as e:
-                print(f"Error copying {fc}: {e}")
+# Loop through all the .lyrx files in the specified folder
+for lyrx_file in os.listdir(lyrx_folder):
+    if lyrx_file.endswith(".lyrx"):
+        # Construct the full path to the .lyrx file
+        lyrx_path = os.path.join(lyrx_folder, lyrx_file)
 
-# Copy unique feature classes from both geodatabases to the output geodatabase
-print("Copying feature classes from the first geodatabase...")
-copy_unique_features(feature_classes1, path1, output_path)
+        # Load the symbology from the .lyrx file
+        lyrx_layer = arcpy.mp.LayerFile(lyrx_path).listLayers()[0]
+        lyrx_layer_name = lyrx_layer.name
 
-print("Copying feature classes from the second geodatabase...")
-copy_unique_features(feature_classes2, path2, output_path)
+        # Map the lyrx layer name to the actual map layer name
+        actual_layer_name = layer_name_mapping.get(lyrx_layer_name, lyrx_layer_name)
 
-# Merge common feature classes by appending data from the second geodatabase to the first
-arcpy.env.workspace = output_path
-for fc in feature_classes1:
-    if fc in feature_classes2:
-        try:
-            print(f"Appending {fc} from {path2} to {output_path}")
-            arcpy.Append_management(inputs=os.path.join(path2, fc), target=os.path.join(output_path, fc), schema_type="NO_TEST")
-        except Exception as e:
-            print(f"Error appending {fc}: {e}")
+        # Find the corresponding layer in the active map by name
+        existing_layer = None
+        for layer in active_map.listLayers():
+            if layer.name == actual_layer_name:
+                existing_layer = layer
+                break
 
-# Remove duplicate features from the output geodatabase
-arcpy.env.workspace = output_path
-for fc in arcpy.ListFeatureClasses():
-    try:
-        print(f"Removing duplicates in {fc}...")
-        arcpy.DeleteIdentical_management(in_dataset=fc, fields=["Shape"])  # You can add more fields if needed
-    except Exception as e:
-        print(f"Error removing duplicates from {fc}: {e}")
+        if existing_layer:
+            # Apply the symbology from the .lyrx file to the existing layer
+            existing_layer.symbology = lyrx_layer.symbology
+            print(f"Updated symbology for layer: {existing_layer.name}")
+        else:
+            print(f"Layer {actual_layer_name} not found in the active map, skipping.")
 
-print("Merging complete! Duplicates removed.")
+# Save the project
+project.save()
+
+print("Layer symbology updated successfully!")
